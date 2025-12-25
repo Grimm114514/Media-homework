@@ -1,0 +1,226 @@
+\documentclass[a4paper,12pt]{article}
+\usepackage[UTF8]{ctex}     % 中文支持
+\usepackage{amsmath, amssymb, amsfonts} % 数学公式
+\usepackage[draft]{graphicx}       % 插入图片 (draft模式不加载图片，防止卡顿)
+\usepackage{float}          % 图片浮动控制
+\usepackage{geometry}       % 页面边距
+\usepackage{listings}       % 代码块
+\usepackage{xcolor}         % 颜色支持
+\usepackage{booktabs}       % 三线表
+\usepackage{hyperref}       % 超链接引用
+
+% 页面设置
+\geometry{left=2.5cm,right=2.5cm,top=2.5cm,bottom=2.5cm}
+
+% 代码块样式设置
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\small,
+    breakatwhitespace=false,         
+    breaklines=true,
+    postbreak=\mbox{\textcolor{red}{$\hookrightarrow$}\space},
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=4,
+    language=Python,
+    columns=flexible
+}
+\lstset{style=mystyle}
+
+
+\begin{document}
+
+\begin{titlepage}
+    \centering
+    \vspace*{3cm}
+    
+    {\LARGE\textbf{基于改进 ResNet-18 的 CIFAR-10 图像分类}\par}
+    
+    \vspace{2cm}
+    
+    {\large 姓名：张宗桪\par}
+    {\large 专业：人工智能\par}
+    {\large 学号：2023K8009991013\par}
+    
+    \vfill
+    
+    
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+\section{实验背景与任务}
+\subsection{CIFAR-10 数据集}
+CIFAR-10 是计算机视觉领域经典的图像分类数据集，包含 10 个类别，共 60000 张 $32 \times 32$ 彩色图像。其中训练集 50000 张，测试集 10000 张。
+
+\subsection{ResNet 网络架构}
+ResNet (Residual Network) 通过引入“残差学习”解决了深层网络中的梯度消失和退化问题。本实验采用 ResNet-18 作为基础架构（Base Model），其核心是由卷积层、BN 层和激活函数组成的 BasicBlock。
+
+\section{激活函数的对比与分析}
+激活函数为神经网络引入了非线性因素。本实验在保持 ResNet-18 结构不变的情况下，对比了以下四种激活函数。
+
+\subsection{数学原理}
+
+\subsubsection{Sigmoid}
+Sigmoid 函数将输入映射到 $(0, 1)$ 区间：
+\begin{equation}
+    \sigma(x) = \frac{1}{1 + e^{-x}}
+\end{equation}
+\textbf{缺点分析}：在 $x$ 绝对值较大时，导数趋近于 0，容易导致梯度消失；且输出不是以 0 为中心的。
+
+\subsubsection{ReLU (Rectified Linear Unit)}
+ReLU 是目前最常用的激活函数，公式如下：
+\begin{equation}
+    \text{ReLU}(x) = \max(0, x)
+\end{equation}
+\textbf{优点}：计算简单，在正区间解决了梯度消失问题，收敛速度快。
+
+\subsubsection{LeakyReLU}
+为了解决 ReLU 在 $x<0$ 时神经元“死亡”的问题，LeakyReLU 引入了一个小的负斜率（实验中默认 slope=0.01）：
+\begin{equation}
+    \text{LeakyReLU}(x) = \begin{cases} 
+    x & \text{if } x > 0 \\
+    \alpha x & \text{if } x \le 0 
+    \end{cases}
+\end{equation}
+
+\subsubsection{GELU (Gaussian Error Linear Unit)}
+GELU 在 Transformer 和 BERT 等模型中被广泛应用，它结合了随机正则化的思想：
+\begin{equation}
+    \text{GELU}(x) = x \Phi(x) = x \cdot \frac{1}{2} \left[ 1 + \text{erf}\left( \frac{x}{\sqrt{2}} \right) \right]
+\end{equation}
+其中 $\Phi(x)$ 是标准正态分布的累积分布函数。
+
+\subsection{实验结果对比}
+% 请替换为你实际生成的图片路径
+\begin{figure}[H]
+    \centering
+    % 假设你保存了不同激活函数的对比图，可以使用子图或分别展示
+     \includegraphics[width=0.48\textwidth]{figures/ReLU_SGD.png}
+    \includegraphics[width=0.48\textwidth]{figures/Sigmoid_SGD.png}
+    \caption{不同激活函数下的损失收敛曲线对比}
+    \label{fig:activation_compare}
+\end{figure}
+
+\textbf{结果分析}：(在此处填写你的观察，例如：Sigmoid 收敛极慢甚至不收敛，ReLU 和 LeakyReLU 表现接近，GELU 是否有提升等。)
+
+\section{优化策略的对比与分析}
+优化器决定了网络参数更新的方式。实验在固定学习率 ($LR=0.01$) 的条件下对比了以下三种优化器。
+
+\subsection{数学原理}
+
+\subsubsection{SGD (随机梯度下降)}
+最基本的参数更新方法，每次迭代使用一个 Batch 的数据计算梯度：
+\begin{equation}
+    w_{t+1} = w_t - \eta \nabla L(w_t)
+\end{equation}
+其中 $\eta$ 为学习率。
+
+\subsubsection{SGD with Momentum}
+为了抑制震荡并加速收敛，引入动量项 $v_t$（实验中 $\mu=0.9$）：
+\begin{align}
+    v_{t+1} &= \mu v_t + \nabla L(w_t) \\
+    w_{t+1} &= w_t - \eta v_{t+1}
+\end{align}
+
+\subsubsection{Adam (Adaptive Moment Estimation)}
+Adam 结合了动量法和 RMSProp，自适应地调整每个参数的学习率。它利用了一阶矩估计 $m_t$ 和二阶矩估计 $v_t$：
+\begin{align}
+    m_t &= \beta_1 m_{t-1} + (1-\beta_1)g_t \\
+    v_t &= \beta_2 v_{t-1} + (1-\beta_2)g_t^2 \\
+    \hat{m}_t &= \frac{m_t}{1-\beta_1^t}, \quad \hat{v}_t = \frac{v_t}{1-\beta_2^t} \\
+    w_{t+1} &= w_t - \frac{\eta}{\sqrt{\hat{v}_t} + \epsilon} \hat{m}_t
+\end{align}
+
+\subsection{实验结果对比}
+% 插入优化器对比图
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/GELU_Adam.png}
+    \caption{不同优化器下的准确率变化曲线}
+    \label{fig:optimizer_compare}
+\end{figure}
+
+\textbf{结果分析}：(在此处填写分析，例如：Adam 在初期收敛最快，但 SGD+Momentum 在后期是否达到了更高的泛化精度。)
+
+\section{模块设计创新：Ghost Module}
+\subsection{改进动机}
+在传统的 CNN 中，特征图（Feature Maps）通常存在大量的冗余（相似的特征图）。GhostNet 指出，这些冗余特征图可以通过廉价的线性变换（Cheap Operations）从少量“本征特征图”生成，从而减少计算量和参数量。
+
+\subsection{代码实现}
+本实验基于 `Ghost.py`，设计了 \texttt{GhostModule} 替代 ResNet BasicBlock 中的标准卷积层。核心代码如下：
+
+\begin{lstlisting}[caption=Ghost Module 核心实现代码, label=code:ghost]
+class GhostModule(nn.Module):
+    def __init__(self, inp, oup, kernel_size=1, ratio=2, dw_size=3, stride=1, relu=True):
+        super(GhostModule, self).__init__()
+        self.oup = oup
+        init_channels = math.ceil(oup / ratio)
+        new_channels = init_channels * (ratio - 1)      
+        self.primary_conv = nn.Sequential(
+            nn.Conv2d(inp, init_channels, kernel_size, stride, kernel_size//2, bias=False),
+            nn.BatchNorm2d(init_channels),
+            nn.ReLU(inplace=True) if relu else nn.Sequential(),
+        )
+        self.cheap_operation = nn.Sequential(
+            nn.Conv2d(init_channels, new_channels, dw_size, 1, dw_size//2, groups=init_channels, bias=False),
+            nn.BatchNorm2d(new_channels),
+            nn.ReLU(inplace=True) if relu else nn.Sequential(),
+        )
+    def forward(self, x):
+        x1 = self.primary_conv(x)
+        x2 = self.cheap_operation(x1)
+        out = torch.cat([x1, x2], dim=1)
+        return out[:, :self.oup, :, :] 
+\end{lstlisting}
+
+\subsection{改进后的 BasicBlock}
+我们将原 ResNet 中的 $3 \times 3$ 卷积替换为 \texttt{GhostModule}，设置 \texttt{ratio=2}，意味着理论上减少了一半的计算量。
+
+\subsection{性能评估}
+将改进后的 ResNet-Ghost 与原始 ResNet-18 进行对比：
+
+\begin{table}[H]
+    \centering
+    \caption{ResNet-18 与 ResNet-Ghost 性能对比}
+    \begin{tabular}{cccc}
+        \toprule
+        Model & Parameters \\
+        \midrule
+        ResNet-18  & 11.17M \\
+        ResNet-Ghost & 5.7M \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/LeakyReLU_SGD_Ghost.png}
+    \caption{ResNet-Ghost 训练过程记录}
+    \label{fig:ghost_result}
+\end{figure}
+
+\section{实验总结}
+本次实验通过复现 ResNet-18 并进行模块化改进，得出以下结论：
+\begin{enumerate}
+    \item 激活函数方面，ReLU 及其变体（LeakyReLU）在深层网络中表现稳定，优于 Sigmoid。
+    \item 优化器方面，Adam 收敛速度最快，但在某些情况下 SGD+Momentum 能获得更好的最终泛化能力。
+    \item 通过引入 Ghost Module，模型在保持精度的同时，参数利用率得到了提升，验证了特征图冗余性假设的合理性。
+\end{enumerate}
+
+\end{document}

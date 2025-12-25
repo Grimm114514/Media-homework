@@ -3,196 +3,246 @@ import torch.nn as nn
 import torch.optim as optim
 import torchvision
 import torchvision.transforms as transforms
-from torchvision import models
-from torchvision.models import resnet50
-from torch.utils.data import DataLoader
-from collections import OrderedDict 
-import pandas as pd  
-import os
 import matplotlib.pyplot as plt
+import os
+import time
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print ("Using device:", device)
 
-class ResNetFeatureExtractor(nn.Module):
-    def __init__(self, resnet_type='resnet50', pretrained=True, use_avgpool=False):
-        super(ResNetFeatureExtractor, self).__init__() 
+
+#ACTIVATION_CHOICE = "ReLU"
+ACTIVATION_CHOICE = "LeakyReLU"
+#ACTIVATION_CHOICE="GELU"
+#ACTIVATION_CHOICE="Sigmoid"
+
+
+OPTIMIZER_CHOICE = "SGD"             # 纯 SGD
+#OPTIMIZER_CHOICE = "SGD_Momentum"    # SGD + 0.9 Momentum
+#OPTIMIZER_CHOICE = "Adam"            # Adam
+
+
+BATCH_SIZE = 128
+LEARNING_RATE = 0.01  # 作业要求对比不同优化器在"相同学习率"下的表现
+EPOCHS = 20          # 演示用40轮，实际作业建议20-50轮
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+print(f"当前实验配置: 激活函数 [{ACTIVATION_CHOICE}] | 优化器 [{OPTIMIZER_CHOICE}] | 设备 [{DEVICE}]")
+
+
+def get_data_loaders():
+    transform_train = transforms.Compose([
+        transforms.RandomCrop(32, padding=4),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+    ])
+
+    transform_test = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+    ])
+
+    trainset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform_train)
+    trainloader = torch.utils.data.DataLoader(trainset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
+
+    testset = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transform_test)
+    testloader = torch.utils.data.DataLoader(testset, batch_size=100, shuffle=False, num_workers=2)
+    
+    return trainloader, testloader
+
+
+
+class BasicBlock(nn.Module):
+    expansion = 1
+
+    def __init__(self, in_planes, planes, stride=1, activation_class=nn.ReLU):
+        super(BasicBlock, self).__init__()
+        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(planes)
+        # 动态初始化激活函数
+        self.act1 = activation_class()
         
-        # Load a pre-trained ResNet model
-        if resnet_type == 'resnet18':
-            self.resnet = models.resnet18(pretrained=pretrained)
-        elif resnet_type == 'resnet34':
-            self.resnet = models.resnet34(pretrained=pretrained)
-        elif resnet_type == 'resnet50':
-            self.resnet = models.resnet50(pretrained=pretrained)
-        elif resnet_type == 'resnet101':
-            self.resnet = models.resnet101(pretrained=pretrained)
-        elif resnet_type == 'resnet152':
-            self.resnet = models.resnet152(pretrained=pretrained)
-        else:
-            raise ValueError("Unsupported ResNet type: {}".format(resnet_type))
-        
-        # Remove the fully connected layer
-        self.features = nn.Sequential(OrderedDict([
-            ('conv1', self.resnet.conv1),
-            ('bn1', self.resnet.bn1),
-            ('relu', self.resnet.relu),
-            ('maxpool', self.resnet.maxpool),
-            ('layer1', self.resnet.layer1),
-            ('layer2', self.resnet.layer2),
-            ('layer3', self.resnet.layer3),
-            ('layer4', self.resnet.layer4),
-        ]))
-        
-        self.use_avgpool = use_avgpool
-        if use_avgpool:
-            self.avgpool = self.resnet.avgpool
+        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(planes)
+        self.act2 = activation_class()
+
+        self.shortcut = nn.Sequential()
+        if stride != 1 or in_planes != self.expansion * planes:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_planes, self.expansion * planes, kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(self.expansion * planes)
+            )
 
     def forward(self, x):
-        x = self.features(x)
-        if self.use_avgpool:
-            x = self.avgpool(x)
-            x = torch.flatten(x, 1)
-        return x
+        out = self.act1(self.bn1(self.conv1(x)))
+        out = self.bn2(self.conv2(out))
+        out += self.shortcut(x)
+        out = self.act2(out)
+        return out
 
-# 数据预处理
-transform = transforms.Compose([
-    transforms.RandomHorizontalFlip(),
-    transforms.RandomCrop(32, padding=4),
-    transforms.ToTensor(),
-    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-])
+class ResNet(nn.Module):
+    def __init__(self, block, num_blocks, num_classes=10, activation_class=nn.ReLU):
+        super(ResNet, self).__init__()
+        self.in_planes = 64
+        self.activation_class = activation_class
+        self.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(64)
+        self.act1 = activation_class()
+        
+        self.layer1 = self._make_layer(block, 64, num_blocks[0], stride=1)
+        self.layer2 = self._make_layer(block, 128, num_blocks[1], stride=2)
+        self.layer3 = self._make_layer(block, 256, num_blocks[2], stride=2)
+        self.layer4 = self._make_layer(block, 512, num_blocks[3], stride=2)
+        
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        self.linear = nn.Linear(512 * block.expansion, num_classes)
 
-# 加载 CIFAR-10 数据集
-train_dataset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
-test_dataset = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transform)
-
-train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True, num_workers=2)
-test_loader = DataLoader(test_dataset, batch_size=128, shuffle=False, num_workers=2)
-
-# 定义 ResNet 模型
-class CIFAR10ResNet(nn.Module):
-    def __init__(self, num_classes=10):
-        super(CIFAR10ResNet, self).__init__()
-        self.resnet = resnet50(pretrained=False)  # 使用 ResNet-50
-        self.resnet.fc = nn.Linear(self.resnet.fc.in_features, num_classes)  # 修改最后一层以适配 CIFAR-10
+    def _make_layer(self, block, planes, num_blocks, stride):
+        strides = [stride] + [1]*(num_blocks-1)
+        layers = []
+        for stride in strides:
+            layers.append(block(self.in_planes, planes, stride, self.activation_class))
+            self.in_planes = planes * block.expansion
+        return nn.Sequential(*layers)
 
     def forward(self, x):
-        return self.resnet(x)
+        out = self.act1(self.bn1(self.conv1(x)))
+        out = self.layer1(out)
+        out = self.layer2(out)
+        out = self.layer3(out)
+        out = self.layer4(out)
+        out = self.avgpool(out)
+        out = out.view(out.size(0), -1)
+        out = self.linear(out)
+        return out
 
-model = CIFAR10ResNet().to(device)
+def ResNet18(activation_class):
+    return ResNet(BasicBlock, [2, 2, 2, 2], activation_class=activation_class)
 
-# 定义损失函数和优化器
+
+# --- 获取激活函数类 ---
+if ACTIVATION_CHOICE == "ReLU":
+    act_class = nn.ReLU
+elif ACTIVATION_CHOICE == "LeakyReLU":
+    act_class = nn.LeakyReLU  # 默认 slope=0.01
+elif ACTIVATION_CHOICE == "GELU":
+    act_class = nn.GELU
+elif ACTIVATION_CHOICE == "Sigmoid":
+    act_class = nn.Sigmoid
+else:
+    raise ValueError("未知的激活函数选择")
+
+# --- 实例化模型 ---
+model = ResNet18(activation_class=act_class).to(DEVICE)
+
+# --- 定义损失函数 ---
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4)# 优化器
-scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1)# 学习率调度器
 
-# 训练函数
-def train(model, loader, criterion, optimizer, device):
-    model.train()
-    running_loss = 0.0
-    correct = 0
-    total = 0
+# --- 获取优化器 ---
+if OPTIMIZER_CHOICE == "SGD":
+    optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE, momentum=0, weight_decay=5e-4)
+elif OPTIMIZER_CHOICE == "SGD_Momentum":
+    optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE, momentum=0.9, weight_decay=5e-4)
+elif OPTIMIZER_CHOICE == "Adam":
+    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=5e-4)
+else:
+    raise ValueError("未知的优化器选择")
 
-    for inputs, targets in loader:
-        inputs, targets = inputs.to(device), targets.to(device)
 
-        optimizer.zero_grad()
-        outputs = model(inputs)
-        loss = criterion(outputs, targets)
-        loss.backward()
-        optimizer.step()
+def train():
+    trainloader, testloader = get_data_loaders()
+    loss_history = []
+    train_acc_history = []
+    test_acc_history = []
+    
+    print("开始训练...")
+    start_time = time.time()
 
-        running_loss += loss.item()
-        _, predicted = outputs.max(1)
-        total += targets.size(0)
-        correct += predicted.eq(targets).sum().item()
+    for epoch in range(EPOCHS):
+        model.train()
+        running_loss = 0.0
+        correct = 0
+        total = 0
+        
+        for i, data in enumerate(trainloader, 0):
+            inputs, labels = data
+            inputs, labels = inputs.to(DEVICE), labels.to(DEVICE)
 
-    train_loss = running_loss / len(loader)
-    train_acc = 100. * correct / total
-    return train_loss, train_acc
-
-# 测试函数
-def test(model, loader, criterion, device):
-    model.eval()
-    running_loss = 0.0
-    correct = 0
-    total = 0
-
-    with torch.no_grad():
-        for inputs, targets in loader:
-            inputs, targets = inputs.to(device), targets.to(device)
-
+            optimizer.zero_grad()
             outputs = model(inputs)
-            loss = criterion(outputs, targets)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
 
             running_loss += loss.item()
+            
+            # 计算简单的训练精度
             _, predicted = outputs.max(1)
-            total += targets.size(0)
-            correct += predicted.eq(targets).sum().item()
+            total += labels.size(0)
+            correct += predicted.eq(labels).sum().item()
 
-    test_loss = running_loss / len(loader)
-    test_acc = 100. * correct / total
-    return test_loss, test_acc
+        epoch_loss = running_loss / len(trainloader)
+        epoch_train_acc = 100. * correct / total
+        loss_history.append(epoch_loss)
+        train_acc_history.append(epoch_train_acc)
+        
+        model.eval()
+        test_correct = 0
+        test_total = 0
+        with torch.no_grad():
+            for data in testloader:
+                inputs, labels = data
+                inputs, labels = inputs.to(DEVICE), labels.to(DEVICE)
+                outputs = model(inputs)
+                _, predicted = outputs.max(1)
+                test_total += labels.size(0)
+                test_correct += predicted.eq(labels).sum().item()
+        
+        epoch_test_acc = 100. * test_correct / test_total
+        test_acc_history.append(epoch_test_acc)
+        
+        print(f"Epoch [{epoch+1}/{EPOCHS}] Loss: {epoch_loss:.4f} | Train Acc: {epoch_train_acc:.2f}% | Test Acc: {epoch_test_acc:.2f}%")
 
-if __name__ == '__main__':
-    # 数据加载和训练代码
-    num_epochs = 30
-    history = []  # 用于记录每个 epoch 的训练和测试结果
-    if os.path.exists('checkpoint_1.pth'):
-        model.load_state_dict(torch.load('checkpoint_1.pth'))
+    elapsed_time = time.time() - start_time
+    print(f"训练完成，耗时: {elapsed_time:.1f}s")
+    return loss_history, train_acc_history, test_acc_history, elapsed_time
 
-    for epoch in range(num_epochs):
-        train_loss, train_acc = train(model, train_loader, criterion, optimizer, device)
-        test_loss, test_acc = test(model, test_loader, criterion, device)
-        scheduler.step()
+def plot_and_save(loss_history, train_acc_history, test_acc_history, elapsed_time):
+    # 确保文件夹存在
+    save_dir = "figures"
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
 
-        # 记录训练和测试结果
-        history.append({
-            'Epoch': epoch + 1,
-            'Train Loss': train_loss,
-            'Train Accuracy': train_acc,
-            'Test Loss': test_loss,
-            'Test Accuracy': test_acc
-        })
+    fig, axes = plt.subplots(1, 2, figsize=(15, 5))
+    
+    # 损失曲线
+    axes[0].plot(range(1, EPOCHS + 1), loss_history, marker='o', label=f'{ACTIVATION_CHOICE} + {OPTIMIZER_CHOICE}')
+    axes[0].set_title(f'Training Loss Curve ({ACTIVATION_CHOICE} + {OPTIMIZER_CHOICE})')
+    axes[0].set_xlabel('Epoch')
+    axes[0].set_ylabel('Loss')
+    axes[0].grid(True)
+    axes[0].legend()
+    
 
-        print(f"Epoch {epoch+1}/{num_epochs}")
-        print(f"Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.2f}%")
-        print(f"Test Loss: {test_loss:.4f}, Test Acc: {test_acc:.2f}%")
-
-    # 使用 matplotlib 绘制训练和测试的损失、准确率曲线
-    epochs = [h['Epoch'] for h in history]
-    train_losses = [h['Train Loss'] for h in history]
-    test_losses = [h['Test Loss'] for h in history]
-    train_accuracies = [h['Train Accuracy'] for h in history]
-    test_accuracies = [h['Test Accuracy'] for h in history]
-
-    plt.figure(figsize=(12, 6))
-
-    # 绘制损失曲线
-    plt.subplot(1, 2, 1)
-    plt.plot(epochs, train_losses, label='Train Loss', marker='o')
-    plt.plot(epochs, test_losses, label='Test Loss', marker='o')
-    plt.xlabel('Epoch')
-    plt.ylabel('Loss')
-    plt.title('Loss Curve')
-    plt.legend()
-    plt.grid()
-
-    # 绘制准确率曲线
-    plt.subplot(1, 2, 2)
-    plt.plot(epochs, train_accuracies, label='Train Accuracy', marker='o')
-    plt.plot(epochs, test_accuracies, label='Test Accuracy', marker='o')
-    plt.xlabel('Epoch')
-    plt.ylabel('Accuracy (%)')
-    plt.title('Accuracy Curve')
-    plt.legend()
-    plt.grid()
-
-    # 保存图表到文件
+    axes[1].plot(range(1, EPOCHS + 1), train_acc_history, marker='o', label='Train Acc')
+    axes[1].plot(range(1, EPOCHS + 1), test_acc_history, marker='s', label='Test Acc')
+    axes[1].set_title(f'Accuracy Curve ({ACTIVATION_CHOICE} + {OPTIMIZER_CHOICE})')
+    axes[1].set_xlabel('Epoch')
+    axes[1].set_ylabel('Accuracy (%)')
+    axes[1].grid(True)
+    axes[1].legend()
+    
+    # 添加训练耗时的文本注释
+    fig.suptitle(f'Training Time: {elapsed_time:.1f}s', fontsize=12, color='red')
+    
+    # 构建文件名
+    filename = f"{ACTIVATION_CHOICE}_{OPTIMIZER_CHOICE}.png"
+    save_path = os.path.join(save_dir, filename)
+    
     plt.tight_layout()
-    plt.savefig('training_results.png')
+    plt.savefig(save_path)
+    print(f"图表已保存至: {save_path}")
     plt.show()
 
-    # 保存最终模型
-    torch.save(model.state_dict(), f'checkpoint_1.pth')
+if __name__ == '__main__':
+    losses, train_accs, test_accs, elapsed_time = train()
+    plot_and_save(losses, train_accs, test_accs, elapsed_time)
