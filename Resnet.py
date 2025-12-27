@@ -21,8 +21,8 @@ OPTIMIZER_CHOICE = "SGD"             # 纯 SGD
 
 
 BATCH_SIZE = 128
-LEARNING_RATE = 0.01  # 作业要求对比不同优化器在"相同学习率"下的表现
-EPOCHS = 20          # 演示用40轮，实际作业建议20-50轮
+LEARNING_RATE = 0.01  
+EPOCHS = 40         
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 print(f"当前实验配置: 激活函数 [{ACTIVATION_CHOICE}] | 优化器 [{OPTIMIZER_CHOICE}] | 设备 [{DEVICE}]")
@@ -58,7 +58,6 @@ class BasicBlock(nn.Module):
         super(BasicBlock, self).__init__()
         self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(planes)
-        # 动态初始化激活函数
         self.act1 = activation_class()
         
         self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=1, padding=1, bias=False)
@@ -119,11 +118,11 @@ def ResNet18(activation_class):
     return ResNet(BasicBlock, [2, 2, 2, 2], activation_class=activation_class)
 
 
-# --- 获取激活函数类 ---
+
 if ACTIVATION_CHOICE == "ReLU":
     act_class = nn.ReLU
 elif ACTIVATION_CHOICE == "LeakyReLU":
-    act_class = nn.LeakyReLU  # 默认 slope=0.01
+    act_class = nn.LeakyReLU 
 elif ACTIVATION_CHOICE == "GELU":
     act_class = nn.GELU
 elif ACTIVATION_CHOICE == "Sigmoid":
@@ -131,13 +130,12 @@ elif ACTIVATION_CHOICE == "Sigmoid":
 else:
     raise ValueError("未知的激活函数选择")
 
-# --- 实例化模型 ---
+
 model = ResNet18(activation_class=act_class).to(DEVICE)
 
-# --- 定义损失函数 ---
 criterion = nn.CrossEntropyLoss()
 
-# --- 获取优化器 ---
+
 if OPTIMIZER_CHOICE == "SGD":
     optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE, momentum=0, weight_decay=5e-4)
 elif OPTIMIZER_CHOICE == "SGD_Momentum":
@@ -175,7 +173,7 @@ def train():
 
             running_loss += loss.item()
             
-            # 计算简单的训练精度
+            # 计算训练精度
             _, predicted = outputs.max(1)
             total += labels.size(0)
             correct += predicted.eq(labels).sum().item()
@@ -207,7 +205,7 @@ def train():
     return loss_history, train_acc_history, test_acc_history, elapsed_time
 
 def plot_and_save(loss_history, train_acc_history, test_acc_history, elapsed_time):
-    # 确保文件夹存在
+  
     save_dir = "figures"
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
@@ -231,10 +229,10 @@ def plot_and_save(loss_history, train_acc_history, test_acc_history, elapsed_tim
     axes[1].grid(True)
     axes[1].legend()
     
-    # 添加训练耗时的文本注释
+
     fig.suptitle(f'Training Time: {elapsed_time:.1f}s', fontsize=12, color='red')
     
-    # 构建文件名
+
     filename = f"{ACTIVATION_CHOICE}_{OPTIMIZER_CHOICE}.png"
     save_path = os.path.join(save_dir, filename)
     

@@ -14,7 +14,7 @@ ACTIVATION_CHOICE = "LeakyReLU"
 #ACTIVATION_CHOICE="GELU"
 #ACTIVATION_CHOICE="Sigmoid"
 
-# --- B. 选择优化器 (取消注释你想要的那一行) ---
+
 OPTIMIZER_CHOICE = "SGD"             # 纯 SGD
 #OPTIMIZER_CHOICE = "SGD_Momentum"    # SGD + 0.9 Momentum
 #OPTIMIZER_CHOICE = "Adam"            # Adam
@@ -90,7 +90,6 @@ class BasicBlock(nn.Module):
         self.conv2 = GhostModule(planes, planes, kernel_size=3, stride=1, ratio=2)
         self.bn2 = nn.BatchNorm2d(planes)
         self.act2 = activation_class()
-        # ------------------------------------------------
 
         self.shortcut = nn.Sequential()
         if stride != 1 or in_planes != self.expansion * planes:
