@@ -76,9 +76,86 @@ ResNet 通过引入“残差学习”解决了深层网络中的梯度消失和�
     \caption{ResNet-18 结构示意图}
     \label{fig:resnet_block}
 \end{figure}
+\begin{lstlisting}[caption=ResNet 核心代码, label=code:ResNet-18]
+class BasicBlock(nn.Module):
+    expansion = 1
+
+    def __init__(self, in_planes, planes, stride=1, activation_class=nn.ReLU):
+        super(BasicBlock, self).__init__()
+        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(planes)
+        self.act1 = activation_class()
+        
+        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(planes)
+        self.act2 = activation_class()
+
+        self.shortcut = nn.Sequential()
+        if stride != 1 or in_planes != self.expansion * planes:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_planes, self.expansion * planes, kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(self.expansion * planes)
+            )
+
+    def forward(self, x):
+        out = self.act1(self.bn1(self.conv1(x)))
+        out = self.bn2(self.conv2(out))
+        out += self.shortcut(x)
+        out = self.act2(out)
+        return out
+
+class ResNet(nn.Module):
+    def __init__(self, block, num_blocks, num_classes=10, activation_class=nn.ReLU):
+        super(ResNet, self).__init__()
+        self.in_planes = 64
+        self.activation_class = activation_class
+        self.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(64)
+        self.act1 = activation_class()
+        
+        self.layer1 = self._make_layer(block, 64, num_blocks[0], stride=1)
+        self.layer2 = self._make_layer(block, 128, num_blocks[1], stride=2)
+        self.layer3 = self._make_layer(block, 256, num_blocks[2], stride=2)
+        self.layer4 = self._make_layer(block, 512, num_blocks[3], stride=2)
+        
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        self.linear = nn.Linear(512 * block.expansion, num_classes)
+
+    def _make_layer(self, block, planes, num_blocks, stride):
+        strides = [stride] + [1]*(num_blocks-1)
+        layers = []
+        for stride in strides:
+            layers.append(block(self.in_planes, planes, stride, self.activation_class))
+            self.in_planes = planes * block.expansion
+        return nn.Sequential(*layers)
+
+    def forward(self, x):
+        out = self.act1(self.bn1(self.conv1(x)))
+        out = self.layer1(out)
+        out = self.layer2(out)
+        out = self.layer3(out)
+        out = self.layer4(out)
+        out = self.avgpool(out)
+        out = out.view(out.size(0), -1)
+        out = self.linear(out)
+        return out
+
+def ResNet18(activation_class):
+    return ResNet(BasicBlock, [2, 2, 2, 2], activation_class=activation_class)
+
+\end{lstlisting}
+\subsection{实验配置}
+本实验基于 PyTorch 框架实现，使用云端 Nividia 4090 GPU + 4颗cpu核心 进行训练。主要超参数设置如下：
+\begin{itemize}
+    \item 批大小 (Batch Size)：128
+    \item 训练轮数 (Epochs)：40
+    \item 学习率 (Learning Rate)：0.01
+    \item 优化器 (Optimizer)：SGD / Adam / SGD with Momentum
+    \item 激活函数 (Activation Function)：ReLU / LeakyReLU / Sigmoid / GELU
+\end{itemize}
 
 \section{激活函数的对比与分析}
-激活函数为神经网络引入了非线性因素。本实验在保持 ResNet-18 结构和优化策略以及超参数不变的情况下，对比了以下四种激活函数。
+激活函数为神经网络引入了非线性因素。本实验在保持 ResNet-18 结构和优化策略以及超参数不变的情况下，对比了四种激活函数的性能表现。
 
 \subsection{数学原理}
 
@@ -89,7 +166,7 @@ Sigmoid 函数将输入映射到 $(0, 1)$ 区间：
 \end{equation}
 \textbf{缺点分析}：在 $x$ 绝对值较大时，导数趋近于 0，容易导致梯度消失；且输出不是以 0 为中心的。
 
-\subsubsection{ReLU (Rectified Linear Unit)}
+\subsubsection{ReLU}
 ReLU 是目前最常用的激活函数，公式如下：
 \begin{equation}
     \text{ReLU}(x) = \max(0, x)
@@ -119,7 +196,7 @@ GELU 在 Transformer 和 BERT 等模型中被广泛应用，它结合了随机�
     % 假设你保存了不同激活函数的对比图，可以使用子图或分别展示
 
     \includegraphics[width=0.8\textwidth]{figures/Sigmoid_SGD.png}
-    \caption{}
+    \caption{Sigmoid 激活函数下的训练曲线}
     
 \end{figure}
 
@@ -128,7 +205,7 @@ GELU 在 Transformer 和 BERT 等模型中被广泛应用，它结合了随机�
     % 假设你保存了不同激活函数的对比图，可以使用子图或分别展示
 
     \includegraphics[width=0.8\textwidth]{figures/LeakyReLU_SGD.png}
-    \caption{}
+    \caption{LeakyReLU 激活函数下的训练曲线}
     
 \end{figure}
 \begin{figure}[H]
@@ -136,7 +213,7 @@ GELU 在 Transformer 和 BERT 等模型中被广泛应用，它结合了随机�
     % 假设你保存了不同激活函数的对比图，可以使用子图或分别展示
 
     \includegraphics[width=0.8\textwidth]{figures/ReLU_SGD.png}
-    \caption{}
+    \caption{ReLU 激活函数下的训练曲线}
     
 \end{figure}
 \begin{figure}[H]
@@ -144,7 +221,7 @@ GELU 在 Transformer 和 BERT 等模型中被广泛应用，它结合了随机�
     % 假设你保存了不同激活函数的对比图，可以使用子图或分别展示
 
     \includegraphics[width=0.8\textwidth]{figures/GELU_SGD.png}
-    \caption{}
+    \caption{GELU 激活函数下的训练曲线}
     
 \end{figure}
 
@@ -211,10 +288,28 @@ Adam 结合了动量法和 RMSProp，自适应地调整每个参数的学习率�
 
 \section{模块设计创新：Ghost Module}
 \subsection{改进动机}
-在传统的 CNN 中，特征图（Feature Maps）通常存在大量的冗余（相似的特征图）。GhostNet 指出，这些冗余特征图可以通过廉价的线性变换（Cheap Operations）从少量“本征特征图”生成，从而减少计算量和参数量。
-
+在传统的 CNN 中，特征图通常存在大量的冗余（相似的特征图）。$GhostNet: More Features from Cheap Operations$ 指出，这些冗余特征图可以通过廉价的线性变换从少量“本质特征图”生成，从而减少计算量和参数量。
+\subsection{改进原理}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/pho.png}
+    \caption{ResNet-50 特征图相似性示意图}
+\end{figure}
+如图，论文作者观察到，在训练好的深度神经网络（如 ResNet-50）中，特征图之间存在惊人的相似性，例如很多特征图都可以由一张图经过微小的变换生成。既然这些图高度相关，那么我们就没有必要用独立的卷积核去学习它们，而是可以通过廉价的线性变换生成这些冗余特征图，从而节省计算资源。
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/MSE.png}
+    \caption{特征图拟合实验结果}
+\end{figure}
+作者做了一个简单的实验：取 ResNet-50 中的一对相似特征图，尝试用一个微小的深度卷积核去拟合它们之间的变换关系。结果发现，重建误差（MSE）极小 。这证明了复杂的卷积操作生成的很多特征，完全可以用极低成本的线性变换来替代，而不会丢失太多信息。
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.6\textwidth]{figures/Ghostmodule.png}
+    \caption{Ghost Module 原始结构示意图}
+\end{figure}
+如图是$GhostNet: More Features from Cheap Operations$论文中的 Ghost Module 结构示意图。在Ghost Module 中，首先通过普通卷积核，且核和通道的数量少于原始计划，生成“本质特征图”。然后通过廉价的线性操作(本实验采用卷积$nn.Conv2d$)生成冗余特征图。最后将两部分特征图拼接，得到最终输出。
 \subsection{代码实现}
-本实验基于 `Ghost.py`，设计了 \texttt{GhostModule} 替代 ResNet BasicBlock 中的标准卷积层。核心代码如下：
+本实验基于$GhostNet: More Features from Cheap Operations$，设计了 \texttt{GhostModule} 替代 ResNet 中的标准卷积层。核心代码如下：
 
 \begin{lstlisting}[caption=Ghost Module 核心实现代码, label=code:ghost]
 class GhostModule(nn.Module):
@@ -240,7 +335,10 @@ class GhostModule(nn.Module):
         return out[:, :self.oup, :, :] 
 \end{lstlisting}
 
-\subsection{改进后的 BasicBlock}
+
+
+
+\subsection{改进后的网络}
 我们将原 ResNet 中的 $3 \times 3$ 卷积替换为 \texttt{GhostModule}，设置 \texttt{ratio=2}，意味着理论上减少了一半的计算量。
 
 \subsection{性能评估}
@@ -248,7 +346,7 @@ class GhostModule(nn.Module):
 
 \begin{table}[H]
     \centering
-    \caption{ResNet-18 与 ResNet-Ghost 性能对比}
+    \caption{ResNet-18 与 ResNet-Ghost 大小对比}
     \begin{tabular}{cccc}
         \toprule
         Model & Parameters \\
@@ -261,11 +359,17 @@ class GhostModule(nn.Module):
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.8\textwidth]{figures/LeakyReLU_SGD_Ghost.png}
-    \caption{ResNet-Ghost 训练过程记录}
+    \includegraphics[width=0.7\textwidth]{figures/LeakyReLU_SGD_Ghost.png}
+    \includegraphics[width=0.7\textwidth]{figures/LeakyReLU_SGD.png}
+    \caption{训练过程对比：上为 ResNet-Ghost，下为原 ResNet-18}
     \label{fig:ghost_result}
 \end{figure}
-
+\paragraph{分析}
+\begin{itemize}
+    \item Ghost 版本在参数量砍半的情况下，最终的测试集准确率几乎没有明显的损失,验证了特征图冗余性的假设。
+    \item 虽然参数减少，但是由于Ghost Module 将一个大卷积拆成了两步：少量标准卷积 + Depthwise 卷积 + Concat。这增加了操作的碎片化程度。GPU 需要启动更多的 Kernel，频繁的 Kernel Launch 开销抵消了计算量的减少，这体现在训练时间不降反增上。
+    \item 此外，还可以注意到，Ghost 版本的训练曲线更平滑，验证集准确率的波动更小，这可能是因为Ghost Module 自带的“结构正则化”效应，即Ghost Module 限制了模型的表达能力，减少了过拟合的可能性。
+\end{itemize}
 \section{实验总结}
 本次实验通过复现 ResNet-18 并进行模块化改进，得出以下结论：
 \begin{enumerate}
