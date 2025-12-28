@@ -164,7 +164,7 @@ Sigmoid 函数将输入映射到 $(0, 1)$ 区间：
 \begin{equation}
     \sigma(x) = \frac{1}{1 + e^{-x}}
 \end{equation}
-\textbf{缺点分析}：在 $x$ 绝对值较大时，导数趋近于 0，容易导致梯度消失；且输出不是以 0 为中心的。
+\textbf{缺点}：在 $x$ 绝对值较大时，导数趋近于 0，容易导致梯度消失；且输出不是以 0 为中心的。
 
 \subsubsection{ReLU}
 ReLU 是目前最常用的激活函数，公式如下：
@@ -181,19 +181,21 @@ ReLU 是目前最常用的激活函数，公式如下：
     \alpha x & \text{if } x \le 0 
     \end{cases}
 \end{equation}
+\textbf{优点}：在负区间也有非零输出，缓解了神经元死亡问题。
 
 \subsubsection{GELU }
 GELU 在 Transformer 和 BERT 等模型中被广泛应用，它结合了随机正则化的思想：
 \begin{equation}
     \text{GELU}(x) = x \Phi(x) = x \cdot \frac{1}{2} \left[ 1 + \text{erf}\left( \frac{x}{\sqrt{2}} \right) \right]
 \end{equation}
+\textbf{优点}：GELU 在 $x=0$ 附近是连续可导的，且在负区间有非零输出，有助于信息流动。
 
 
 \subsection{实验结果对比}
-% 请替换为你实际生成的图片路径
+
 \begin{figure}[H]
     \centering
-    % 假设你保存了不同激活函数的对比图，可以使用子图或分别展示
+    
 
     \includegraphics[width=0.8\textwidth]{figures/Sigmoid_SGD.png}
     \caption{Sigmoid 激活函数下的训练曲线}
@@ -202,7 +204,7 @@ GELU 在 Transformer 和 BERT 等模型中被广泛应用，它结合了随机�
 
 \begin{figure}[H]
     \centering
-    % 假设你保存了不同激活函数的对比图，可以使用子图或分别展示
+
 
     \includegraphics[width=0.8\textwidth]{figures/LeakyReLU_SGD.png}
     \caption{LeakyReLU 激活函数下的训练曲线}
@@ -210,7 +212,7 @@ GELU 在 Transformer 和 BERT 等模型中被广泛应用，它结合了随机�
 \end{figure}
 \begin{figure}[H]
     \centering
-    % 假设你保存了不同激活函数的对比图，可以使用子图或分别展示
+
 
     \includegraphics[width=0.8\textwidth]{figures/ReLU_SGD.png}
     \caption{ReLU 激活函数下的训练曲线}
@@ -218,7 +220,7 @@ GELU 在 Transformer 和 BERT 等模型中被广泛应用，它结合了随机�
 \end{figure}
 \begin{figure}[H]
     \centering
-    % 假设你保存了不同激活函数的对比图，可以使用子图或分别展示
+
 
     \includegraphics[width=0.8\textwidth]{figures/GELU_SGD.png}
     \caption{GELU 激活函数下的训练曲线}
@@ -226,10 +228,15 @@ GELU 在 Transformer 和 BERT 等模型中被广泛应用，它结合了随机�
 \end{figure}
 
 \textbf{结果分析}：
+\begin{itemize}
+    \item Sigmoid 激活函数表现最差，训练过程震荡较大，最终准确率最低，验证了其梯度消失以及非零中心，配合上SGD优化器这种单纯的梯度下降，导致优化路径不稳定，不利于深层网络训练的缺点。
+    \item ReLU 和 LeakyReLU 表现较好，收敛速度快且稳定，但优化过程中，出现一定程度上的局部抖动。
+    \item GELU 虽然整体趋势与 ReLU 和 LeakyReLU 相似，但其测试集准确率的上升曲线显得更为平滑。由于在 $x=0$ 附近是连续可导的，不像 ReLU 那样有一个尖锐的折点。这种平滑性有助于 SGD 优化器在逼近极小值时更加顺畅，减少了优化过程中的局部抖动。
+\end{itemize}
 
 
 \section{优化策略的对比与分析}
-优化器决定了网络参数更新的方式。实验在固定学习率 ($LR=0.01$) 的条件下对比了以下三种优化器。
+优化器决定了网络参数更新的方式。实验在固定学习率 ($LR=0.01$) 和激活函数的条件下对比了以下三种优化器。
 
 \subsection{数学原理}
 
@@ -238,7 +245,8 @@ GELU 在 Transformer 和 BERT 等模型中被广泛应用，它结合了随机�
 \begin{equation}
     w_{t+1} = w_t - \eta \nabla L(w_t)
 \end{equation}
-其中 $\eta$ 为学习率。
+\textbf{缺点}：收敛速度慢，容易陷入局部极小值。
+
 
 \subsubsection{SGD with Momentum}
 为了抑制震荡并加速收敛，引入动量项 $v_t$（实验中 $\mu=0.9$）：
@@ -246,7 +254,7 @@ GELU 在 Transformer 和 BERT 等模型中被广泛应用，它结合了随机�
     v_{t+1} &= \mu v_t + \nabla L(w_t) \\
     w_{t+1} &= w_t - \eta v_{t+1}
 \end{align}
-
+\textbf{优点}：动量项帮助参数更新沿着历史梯度的平均方向前进，减少震荡，加速收敛。
 \subsubsection{Adam (Adaptive Moment Estimation)}
 Adam 结合了动量法和 RMSProp，自适应地调整每个参数的学习率。它利用了一阶矩估计 $m_t$ 和二阶矩估计 $v_t$：
 \begin{align}
@@ -255,35 +263,25 @@ Adam 结合了动量法和 RMSProp，自适应地调整每个参数的学习率�
     \hat{m}_t &= \frac{m_t}{1-\beta_1^t}, \quad \hat{v}_t = \frac{v_t}{1-\beta_2^t} \\
     w_{t+1} &= w_t - \frac{\eta}{\sqrt{\hat{v}_t} + \epsilon} \hat{m}_t
 \end{align}
+\textbf{优点}：自适应调整学习率，适合处理稀疏梯度和非平稳目标，收敛速度快。
 
 \subsection{实验结果对比}
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.8\textwidth]{figures/GELU_Adam.png}
-    \caption{}
-\end{figure}
-
-\begin{figure}[H]
-    \centering
+    \caption{Adam 优化器下的训练曲线}
     \includegraphics[width=0.8\textwidth]{figures/GELU_SGD_Momentum.png}
-    \caption{}
-    
-\end{figure}
-\begin{figure}[H]
-    \centering
+    \caption{SGD with Momentum 优化器下的训练曲线}
     \includegraphics[width=0.8\textwidth]{figures/GELU_SGD.png}
-    \caption{}
-    
-\end{figure}
-% 插入优化器对比图
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=0.8\textwidth]{figures/GELU_Adam.png}
-    \caption{不同优化器下的准确率变化曲线}
-
+    \caption{SGD 优化器下的训练曲线}
 \end{figure}
 
 \textbf{结果分析}：
+\begin{itemize}
+    \item Adam 优化器的测试集准确率在 45\% 到 65\% 之间剧烈跳动，且最终测试集准确率只有 60\%-65\% 左右，远低于 SGD。 这可能是因为Adam 收敛虽快，但往往收敛到“尖锐的极小值”，而 SGD 更容易收敛到“平坦的极小值”，平坦极小值的泛化能力更好。此外，Adam对学习率相当敏感，固定学习率0.01可能并非最佳选择，导致性能不佳。
+    \item SGD with Momentum 在此次实验中表现优异。在收敛速度上优于纯 SGD，且最终测试集准确率较高，说明动量项有助于跳出局部极小值，找到更优的全局解。
+    \item 纯 SGD 收敛最慢，但训练过程较为平稳，最终的测试集准确率也较高。但是标准 SGD 每次更新只依赖当前的梯度 $g_t$。虽然它最终能找到不错的极小值，但在遇到峡谷状的损失曲面时，SGD 容易在坑壁间来回震荡，导致收敛速度受限。
+\end{itemize}
 
 
 \section{模块设计创新：Ghost Module}
@@ -334,11 +332,6 @@ class GhostModule(nn.Module):
         out = torch.cat([x1, x2], dim=1)
         return out[:, :self.oup, :, :] 
 \end{lstlisting}
-
-
-
-
-\subsection{改进后的网络}
 我们将原 ResNet 中的 $3 \times 3$ 卷积替换为 \texttt{GhostModule}，设置 \texttt{ratio=2}，意味着理论上减少了一半的计算量。
 
 \subsection{性能评估}
@@ -373,7 +366,7 @@ class GhostModule(nn.Module):
 \end{figure}
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.7\textwidth]{figures/Sigmoid_SGD_Ghost.jpg}
+    \includegraphics[width=0.7\textwidth]{figures/Sigmoid_SGD_Ghost.png}
     \includegraphics[width=0.7\textwidth]{figures/Sigmoid_SGD.png}
     \caption{训练过程对比3：上为 ResNet-Ghost，下为原 ResNet-18}
     \label{fig:ghost_result3}
@@ -383,14 +376,14 @@ class GhostModule(nn.Module):
 \begin{itemize}
     \item Ghost 版本在参数量砍半的情况下，最终的测试集准确率几乎没有明显的损失,验证了特征图冗余性的假设。
     \item 虽然参数减少，但是由于Ghost Module 将一个大卷积拆成了两步：少量标准卷积 + Depthwise 卷积 + Concat。这增加了操作的碎片化程度。GPU 需要启动更多的 Kernel，频繁的 Kernel Launch 开销抵消了计算量的减少，这体现在训练时间不降反增上。
-    \item 此外，还可以注意到，Ghost 版本的训练曲线更平滑，验证集准确率的波动更小，这可能是因为Ghost Module 自带的“结构正则化”效应，即Ghost Module 限制了模型的表达能力，减少了过拟合的可能性。
+    \item 此外，还可以注意到，Ghost 版本的训练曲线更平滑，测试集准确率的波动更小，这可能是因为Ghost Module 自带的“结构正则化”效应，即Ghost Module 限制了模型的表达能力，减少了过拟合的可能性。
 \end{itemize}
 \section{实验总结}
 本次实验通过复现 ResNet-18 并进行模块化改进，得出以下结论：
 \begin{enumerate}
     \item 激活函数方面，ReLU 及其变体（LeakyReLU）在深层网络中表现稳定，优于 Sigmoid。
-    \item 优化器方面，Adam 收敛速度最快，但在某些情况下 SGD+Momentum 能获得更好的最终泛化能力。
-    \item 通过引入 Ghost Module，模型在保持精度的同时，参数利用率得到了提升，验证了特征图冗余性假设的合理性。
+    \item 优化器方面，在本实验条件下 SGD+Momentum 能获得更好的最终泛化能力。虽然Adam理论收敛速度快，但是由于对于学习率的敏感性，固定学习率0.01并非最佳选择，导致性能不佳。
+    \item 通过引入 Ghost Module，模型在保持精度的同时，参数利用率得到了提升，验证了特征图冗余性假设的合理性，且由于结构正则化，测试集准确率的波动减小。
 \end{enumerate}
 
 \end{document}
