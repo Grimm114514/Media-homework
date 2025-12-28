@@ -361,9 +361,24 @@ class GhostModule(nn.Module):
     \centering
     \includegraphics[width=0.7\textwidth]{figures/LeakyReLU_SGD_Ghost.png}
     \includegraphics[width=0.7\textwidth]{figures/LeakyReLU_SGD.png}
-    \caption{训练过程对比：上为 ResNet-Ghost，下为原 ResNet-18}
-    \label{fig:ghost_result}
+    \caption{训练过程对比1：上为 ResNet-Ghost，下为原 ResNet-18}
+    \label{fig:ghost_result1}
 \end{figure}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{figures/GELU_SGD_Momentum_Ghost.png}
+    \includegraphics[width=0.7\textwidth]{figures/GELU_SGD_Momentum.png}
+    \caption{训练过程对比2：上为 ResNet-Ghost，下为原 ResNet-18}
+    \label{fig:ghost_result2}
+\end{figure}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{figures/Sigmoid_SGD_Ghost.jpg}
+    \includegraphics[width=0.7\textwidth]{figures/Sigmoid_SGD.png}
+    \caption{训练过程对比3：上为 ResNet-Ghost，下为原 ResNet-18}
+    \label{fig:ghost_result3}
+\end{figure}
+
 \paragraph{分析}
 \begin{itemize}
     \item Ghost 版本在参数量砍半的情况下，最终的测试集准确率几乎没有明显的损失,验证了特征图冗余性的假设。
