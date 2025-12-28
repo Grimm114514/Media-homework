@@ -1,7 +1,7 @@
 \documentclass[a4paper,12pt]{article}
 \usepackage[UTF8]{ctex}     % 中文支持
 \usepackage{amsmath, amssymb, amsfonts} % 数学公式
-\usepackage[draft]{graphicx}       % 插入图片 (draft模式不加载图片，防止卡顿)
+\usepackage{graphicx}       % 插入图片 (draft模式不加载图片，防止卡顿)
 \usepackage{float}          % 图片浮动控制
 \usepackage{geometry}       % 页面边距
 \usepackage{listings}       % 代码块
@@ -69,10 +69,16 @@
 CIFAR-10 是计算机视觉领域经典的图像分类数据集，包含 10 个类别，共 60000 张 $32 \times 32$ 彩色图像。其中训练集 50000 张，测试集 10000 张。
 
 \subsection{ResNet 网络架构}
-ResNet (Residual Network) 通过引入“残差学习”解决了深层网络中的梯度消失和退化问题。本实验采用 ResNet-18 作为基础架构（Base Model），其核心是由卷积层、BN 层和激活函数组成的 BasicBlock。
+ResNet 通过引入“残差学习”解决了深层网络中的梯度消失和退化问题。本实验采用 ResNet-18 作为基础架构。
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth,angle=-90]{figures/resnet18.png}
+    \caption{ResNet-18 结构示意图}
+    \label{fig:resnet_block}
+\end{figure}
 
 \section{激活函数的对比与分析}
-激活函数为神经网络引入了非线性因素。本实验在保持 ResNet-18 结构不变的情况下，对比了以下四种激活函数。
+激活函数为神经网络引入了非线性因素。本实验在保持 ResNet-18 结构和优化策略以及超参数不变的情况下，对比了以下四种激活函数。
 
 \subsection{数学原理}
 
@@ -99,25 +105,51 @@ ReLU 是目前最常用的激活函数，公式如下：
     \end{cases}
 \end{equation}
 
-\subsubsection{GELU (Gaussian Error Linear Unit)}
+\subsubsection{GELU }
 GELU 在 Transformer 和 BERT 等模型中被广泛应用，它结合了随机正则化的思想：
 \begin{equation}
     \text{GELU}(x) = x \Phi(x) = x \cdot \frac{1}{2} \left[ 1 + \text{erf}\left( \frac{x}{\sqrt{2}} \right) \right]
 \end{equation}
-其中 $\Phi(x)$ 是标准正态分布的累积分布函数。
+
 
 \subsection{实验结果对比}
 % 请替换为你实际生成的图片路径
 \begin{figure}[H]
     \centering
     % 假设你保存了不同激活函数的对比图，可以使用子图或分别展示
-     \includegraphics[width=0.48\textwidth]{figures/ReLU_SGD.png}
-    \includegraphics[width=0.48\textwidth]{figures/Sigmoid_SGD.png}
-    \caption{不同激活函数下的损失收敛曲线对比}
-    \label{fig:activation_compare}
+
+    \includegraphics[width=0.8\textwidth]{figures/Sigmoid_SGD.png}
+    \caption{}
+    
 \end{figure}
 
-\textbf{结果分析}：(在此处填写你的观察，例如：Sigmoid 收敛极慢甚至不收敛，ReLU 和 LeakyReLU 表现接近，GELU 是否有提升等。)
+\begin{figure}[H]
+    \centering
+    % 假设你保存了不同激活函数的对比图，可以使用子图或分别展示
+
+    \includegraphics[width=0.8\textwidth]{figures/LeakyReLU_SGD.png}
+    \caption{}
+    
+\end{figure}
+\begin{figure}[H]
+    \centering
+    % 假设你保存了不同激活函数的对比图，可以使用子图或分别展示
+
+    \includegraphics[width=0.8\textwidth]{figures/ReLU_SGD.png}
+    \caption{}
+    
+\end{figure}
+\begin{figure}[H]
+    \centering
+    % 假设你保存了不同激活函数的对比图，可以使用子图或分别展示
+
+    \includegraphics[width=0.8\textwidth]{figures/GELU_SGD.png}
+    \caption{}
+    
+\end{figure}
+
+\textbf{结果分析}：
+
 
 \section{优化策略的对比与分析}
 优化器决定了网络参数更新的方式。实验在固定学习率 ($LR=0.01$) 的条件下对比了以下三种优化器。
@@ -148,15 +180,34 @@ Adam 结合了动量法和 RMSProp，自适应地调整每个参数的学习率�
 \end{align}
 
 \subsection{实验结果对比}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/GELU_Adam.png}
+    \caption{}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/GELU_SGD_Momentum.png}
+    \caption{}
+    
+\end{figure}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/GELU_SGD.png}
+    \caption{}
+    
+\end{figure}
 % 插入优化器对比图
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.8\textwidth]{figures/GELU_Adam.png}
     \caption{不同优化器下的准确率变化曲线}
-    \label{fig:optimizer_compare}
+
 \end{figure}
 
-\textbf{结果分析}：(在此处填写分析，例如：Adam 在初期收敛最快，但 SGD+Momentum 在后期是否达到了更高的泛化精度。)
+\textbf{结果分析}：
+
 
 \section{模块设计创新：Ghost Module}
 \subsection{改进动机}
